@@ -81,10 +81,7 @@
                 <div id="transcriptArea" class="h-64 md:h-80 overflow-y-auto bg-slate-50 rounded-xl p-4 text-slate-700 border border-slate-100 text-sm leading-relaxed whitespace-pre-wrap scroll-smooth-ios border-inner"></div>
                 
                 <div class="mt-4 flex justify-between items-center">
-                    <div class="flex space-x-2">
-                        <span id="autoSaveStatus" class="text-[10px] text-slate-400 font-medium italic">自動保存待機中</span>
-                        <button id="testDataBtn" class="text-indigo-600 hover:text-indigo-800 text-xs font-bold border border-indigo-200 rounded px-2 py-0.5 bg-indigo-50 transition-colors">試運転用データ入力</button>
-                    </div>
+                    <span id="autoSaveStatus" class="text-[10px] text-slate-400 font-medium italic">自動保存待機中</span>
                     <button id="clearBtn" class="text-slate-400 hover:text-red-500 text-xs font-bold transition-colors p-1">全て消去</button>
                 </div>
             </div>
@@ -192,7 +189,6 @@
         const recordingDot = document.getElementById('recordingDot');
         const loadingIndicator = document.getElementById('loadingIndicator');
         const clearBtn = document.getElementById('clearBtn');
-        const testDataBtn = document.getElementById('testDataBtn');
         const saveWordBtn = document.getElementById('saveWordBtn');
         const openPrintModalBtn = document.getElementById('openPrintModalBtn');
         const autoSaveStatus = document.getElementById('autoSaveStatus');
@@ -218,7 +214,12 @@
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.lang = 'ja-JP';
-            recognition.onstart = () => { isRecording = true; updateUI(); };
+
+            recognition.onstart = () => {
+                isRecording = true;
+                updateUI();
+            };
+
             recognition.onresult = (event) => {
                 let interimTranscript = "";
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -230,8 +231,30 @@
                 saveToLocal();
                 if (finalTranscript.length > 5) generateBtn.disabled = false;
             };
-            recognition.onerror = (event) => { if (event.error !== 'no-speech') console.log("Speech Error:", event.error); };
-            recognition.onend = () => { if (isRecording && !isPaused) recognition.start(); else updateUI(); };
+
+            recognition.onerror = (event) => {
+                if (event.error === 'not-allowed') {
+                    showError("マイクの使用が許可されていません。ブラウザの設定を確認してください。");
+                } else if (event.error !== 'no-speech') {
+                    console.error("Speech Error:", event.error);
+                }
+            };
+
+            recognition.onend = () => {
+                // iPhone等で無音が続くと終了する仕様への対策
+                if (isRecording && !isPaused) {
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                        console.error("Auto-restart failed:", e);
+                    }
+                } else {
+                    updateUI();
+                }
+            };
+        } else {
+            showError("お使いのブラウザは音声認識をサポートしていません。最新のSafariまたはChromeをお使いください。");
+            startBtn.disabled = true;
         }
 
         function saveToLocal() {
@@ -323,17 +346,19 @@ Tailwind CSSのクラスを使い、見出し(h2)には境界線を引くなど�
             setTimeout(() => el.classList.add('hidden'), 4000);
         }
 
-        testDataBtn.addEventListener('click', () => {
-            const dummy = `佐藤：お疲れ様です。本日の「オフィス環境改善プロジェクト」の定例を始めます。
-田中：まずデスクの整理整頓ですが、共有スペースに棚を増設したいと考えています。
-鈴木：予算は10万円以内で収まりそうです。安価な組み立て式を検討しています。
-佐藤：いいですね。では田中さんが今週中に棚を選定してください。
-鈴木：私は設置場所の最終確認を総務部と行っておきます。
-佐藤：ありがとうございます。次回の会議で最終決定しましょう。`;
-            finalTranscript = dummy; transcriptArea.innerText = dummy; generateBtn.disabled = false; saveToLocal();
+        // Event Handlers
+        startBtn.addEventListener('click', () => {
+            // iOS Safariではユーザー操作の直後に認識を開始する必要がある
+            isRecording = true;
+            isPaused = false;
+            try {
+                recognition.start();
+            } catch (e) {
+                console.error("Initial start failed:", e);
+                showError("マイク接続に失敗しました。再試行してください。");
+            }
         });
 
-        startBtn.addEventListener('click', () => { isRecording = true; isPaused = false; recognition.start(); });
         pauseBtn.addEventListener('click', () => { isPaused = true; recognition.stop(); updateUI(); });
         resumeBtn.addEventListener('click', () => { isPaused = false; recognition.start(); updateUI(); });
         stopBtn.addEventListener('click', () => { isRecording = false; isPaused = false; recognition.stop(); updateUI(); });
@@ -356,22 +381,17 @@ Tailwind CSSのクラスを使い、見出し(h2)には境界線を引くなど�
         clearBtn.addEventListener('click', () => clearConfirmModal.classList.remove('hidden'));
         document.getElementById('cancelClearBtn').addEventListener('click', () => clearConfirmModal.classList.add('hidden'));
         document.getElementById('confirmClearBtn').addEventListener('click', () => {
-            // 1. Clear LocalStorage
             localStorage.clear();
-            // 2. Reset Variables
             finalTranscript = "";
             savedMinutes = "";
-            // 3. Clear UI
             transcriptArea.innerText = "";
             minutesContent.innerHTML = "";
             minutesSection.classList.add('hidden');
             generateBtn.disabled = true;
             autoSaveStatus.innerText = "データを完全に削除しました";
-            // 4. Close Modal
             clearConfirmModal.classList.add('hidden');
         });
 
-        // Close modals on outside click
         window.addEventListener('click', (e) => {
             if (e.target === confirmModal) confirmModal.classList.add('hidden');
             if (e.target === printModal) printModal.classList.add('hidden');
