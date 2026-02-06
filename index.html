@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Meeting Minutes Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { background: white; padding: 0; }
+            .minutes-container { border: none; box-shadow: none; padding: 0; }
+            [contenteditable="true"]:focus { outline: none; }
+        }
+        .recording-pulse {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .scroll-smooth-ios {
+            -webkit-overflow-scrolling: touch;
+        }
+        button {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* Editable area styling */
+        #minutesContent[contenteditable="true"] {
+            min-height: 200px;
+            outline: none;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            transition: background-color 0.2s;
+        }
+        #minutesContent[contenteditable="true"]:hover {
+            background-color: #f8fafc;
+        }
+        #minutesContent[contenteditable="true"]:focus {
+            background-color: #fff;
+            box-shadow: inset 0 0 0 2px #e2e8f0;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans text-slate-900 overflow-x-hidden">
+
+    <div class="max-w-4xl mx-auto p-4 md:p-8">
+        <!-- Header -->
+        <header class="mb-6 flex flex-col md:flex-row justify-between items-start md:items-center no-print gap-4">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-indigo-700 flex items-center">
+                    <svg class="w-8 h-8 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m8 0h-3m4-12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    AI議事録 Pro
+                </h1>
+                <p class="text-slate-500 text-sm mt-1">複数人対応・編集・自動保存版</p>
+            </div>
+            <div id="statusBadge" class="px-4 py-1.5 rounded-full bg-slate-200 text-xs font-bold transition-all uppercase tracking-wider">
+                待機中
+            </div>
+        </header>
+
+        <!-- Main Controls -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 no-print">
+            <div class="md:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-base font-bold flex items-center">
+                        <span class="w-2.5 h-2.5 bg-red-500 rounded-full mr-2 hidden" id="recordingDot"></span>
+                        文字起こし
+                    </h2>
+                    <div class="flex space-x-2">
+                        <button id="startBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center shadow-md">開始</button>
+                        <button id="pauseBtn" class="hidden bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center shadow-md">一時停止</button>
+                        <button id="resumeBtn" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center shadow-md">再開</button>
+                        <button id="stopBtn" class="hidden bg-slate-800 text-white px-4 py-2 rounded-xl font-bold text-sm transition-all active:scale-95 shadow-md">終了</button>
+                    </div>
+                </div>
+                
+                <div id="transcriptArea" class="h-64 md:h-80 overflow-y-auto bg-slate-50 rounded-xl p-4 text-slate-700 border border-slate-100 text-sm leading-relaxed whitespace-pre-wrap scroll-smooth-ios border-inner"></div>
+                
+                <div class="mt-4 flex justify-between items-center">
+                    <div class="flex space-x-2">
+                        <span id="autoSaveStatus" class="text-[10px] text-slate-400 font-medium italic">自動保存待機中</span>
+                        <button id="testDataBtn" class="text-indigo-600 hover:text-indigo-800 text-xs font-bold border border-indigo-200 rounded px-2 py-0.5 bg-indigo-50 transition-colors">試運転用データ入力</button>
+                    </div>
+                    <button id="clearBtn" class="text-slate-400 hover:text-red-500 text-xs font-bold transition-colors p-1">全て消去</button>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
+                <div>
+                    <h3 class="font-bold text-slate-800 mb-2 text-sm flex items-center">
+                        <svg class="w-4 h-4 mr-1 text-indigo-500" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path></svg>
+                        AIによる議事録作成
+                    </h3>
+                    <p class="text-xs text-slate-500 mb-6 leading-relaxed">議題・要約・決定事項・ネクストアクションの順で整理します。</p>
+                </div>
+                <div>
+                    <button id="generateBtn" disabled class="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 disabled:opacity-40 py-3 rounded-xl font-bold transition-all shadow-sm">
+                        議事録を生成
+                    </button>
+                    <div id="loadingIndicator" class="hidden mt-4 text-center">
+                        <div class="inline-block animate-spin rounded-full h-5 w-5 border-2 border-indigo-600 border-t-transparent"></div>
+                        <p class="text-[10px] text-indigo-500 mt-2 font-bold tracking-widest uppercase">Analyzing Content...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Minutes Result -->
+        <div id="minutesSection" class="hidden animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+            <div class="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 md:p-12 minutes-container relative">
+                <div class="no-print flex flex-wrap gap-2 mb-8 justify-between items-center border-b pb-4">
+                    <span class="text-xs font-bold text-slate-400 flex items-center italic">
+                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                        内容をクリックして直接編集できます
+                    </span>
+                    <div class="flex gap-2">
+                        <button id="saveWordBtn" class="bg-blue-600 text-white px-4 py-2 rounded-xl flex items-center hover:bg-blue-700 transition-all shadow-md text-sm font-bold">Word保存</button>
+                        <button id="openPrintModalBtn" class="bg-slate-900 text-white px-4 py-2 rounded-xl flex items-center hover:bg-slate-800 transition-all shadow-md text-sm font-bold">印刷 / PDF</button>
+                    </div>
+                </div>
+
+                <!-- Editable Area -->
+                <div id="minutesContent" contenteditable="true" class="prose prose-slate max-w-none"></div>
+            </div>
+        </div>
+
+        <div id="errorMsg" class="hidden fixed bottom-6 right-6 left-6 md:left-auto bg-red-600 text-white px-6 py-3 rounded-2xl shadow-2xl z-50 text-sm font-bold text-center">
+            エラーが発生しました。
+        </div>
+    </div>
+
+    <!-- Confirm Save Word Modal -->
+    <div id="confirmModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-end md:items-center justify-center p-0 md:p-4">
+        <div class="bg-white rounded-t-3xl md:rounded-2xl shadow-2xl max-w-md w-full p-8 animate-in slide-in-from-bottom md:zoom-in duration-300">
+            <h3 class="text-xl font-bold text-slate-800 mb-2">Wordで保存しますか？</h3>
+            <p class="text-slate-500 mb-8 text-sm leading-relaxed">編集した内容を含め、Word形式（.doc）でダウンロードします。</p>
+            <div class="flex flex-col space-y-2 md:flex-row md:space-y-0 md:space-x-3 md:justify-end">
+                <button id="confirmModalBtn" class="w-full md:w-auto px-8 py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg">保存する</button>
+                <button id="cancelModalBtn" class="w-full md:w-auto px-8 py-3 text-slate-400 font-bold rounded-xl">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Print Modal -->
+    <div id="printModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-end md:items-center justify-center p-0 md:p-4">
+        <div class="bg-white rounded-t-3xl md:rounded-2xl shadow-2xl max-w-md w-full p-8 animate-in slide-in-from-bottom md:zoom-in duration-300">
+            <h3 class="text-xl font-bold text-slate-800 mb-2">印刷プレビューを開きますか？</h3>
+            <p class="text-slate-500 mb-8 text-sm leading-relaxed">ブラウザの印刷設定画面が開きます。PDFとして保存することも可能です。</p>
+            <div class="flex flex-col space-y-2 md:flex-row md:space-y-0 md:space-x-3 md:justify-end">
+                <button id="confirmPrintBtn" class="w-full md:w-auto px-8 py-3 bg-slate-900 text-white font-bold rounded-xl shadow-lg">印刷する</button>
+                <button id="cancelPrintBtn" class="w-full md:w-auto px-8 py-3 text-slate-400 font-bold rounded-xl">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Clear Modal -->
+    <div id="clearConfirmModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-end md:items-center justify-center p-0 md:p-4">
+        <div class="bg-white rounded-t-3xl md:rounded-2xl shadow-2xl max-w-md w-full p-8 animate-in slide-in-from-bottom md:zoom-in duration-300">
+            <div class="flex items-center text-red-600 mb-4">
+                <svg class="w-8 h-8 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                <h3 class="text-xl font-bold text-slate-800">全データを消去しますか？</h3>
+            </div>
+            <p class="text-slate-500 mb-8 text-sm leading-relaxed">書き起こしテキストと、現在表示されている議事録の両方が完全に削除されます。この操作は取り消せません。</p>
+            <div class="flex flex-col space-y-2 md:flex-row md:space-y-0 md:space-x-3 md:justify-end">
+                <button id="confirmClearBtn" class="w-full md:w-auto px-8 py-3 bg-red-600 text-white font-bold rounded-xl shadow-lg active:scale-95 transition-all">削除する</button>
+                <button id="cancelClearBtn" class="w-full md:w-auto px-8 py-3 text-slate-400 font-bold rounded-xl">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const apiKey = ""; 
+        let recognition;
+        let finalTranscript = localStorage.getItem('meeting_transcript') || "";
+        let savedMinutes = localStorage.getItem('meeting_minutes') || "";
+        let isRecording = false;
+        let isPaused = false;
+
+        const startBtn = document.getElementById('startBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resumeBtn = document.getElementById('resumeBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const transcriptArea = document.getElementById('transcriptArea');
+        const generateBtn = document.getElementById('generateBtn');
+        const minutesSection = document.getElementById('minutesSection');
+        const minutesContent = document.getElementById('minutesContent');
+        const statusBadge = document.getElementById('statusBadge');
+        const recordingDot = document.getElementById('recordingDot');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const clearBtn = document.getElementById('clearBtn');
+        const testDataBtn = document.getElementById('testDataBtn');
+        const saveWordBtn = document.getElementById('saveWordBtn');
+        const openPrintModalBtn = document.getElementById('openPrintModalBtn');
+        const autoSaveStatus = document.getElementById('autoSaveStatus');
+        
+        const confirmModal = document.getElementById('confirmModal');
+        const printModal = document.getElementById('printModal');
+        const clearConfirmModal = document.getElementById('clearConfirmModal');
+
+        window.onload = () => {
+            if (finalTranscript) {
+                transcriptArea.innerText = finalTranscript;
+                generateBtn.disabled = false;
+            }
+            if (savedMinutes) {
+                minutesContent.innerHTML = savedMinutes;
+                minutesSection.classList.remove('hidden');
+            }
+        };
+
+        const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'ja-JP';
+            recognition.onstart = () => { isRecording = true; updateUI(); };
+            recognition.onresult = (event) => {
+                let interimTranscript = "";
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript + "\n";
+                    else interimTranscript += event.results[i][0].transcript;
+                }
+                transcriptArea.innerText = finalTranscript + interimTranscript;
+                transcriptArea.scrollTop = transcriptArea.scrollHeight;
+                saveToLocal();
+                if (finalTranscript.length > 5) generateBtn.disabled = false;
+            };
+            recognition.onerror = (event) => { if (event.error !== 'no-speech') console.log("Speech Error:", event.error); };
+            recognition.onend = () => { if (isRecording && !isPaused) recognition.start(); else updateUI(); };
+        }
+
+        function saveToLocal() {
+            localStorage.setItem('meeting_transcript', finalTranscript);
+            autoSaveStatus.innerText = "自動保存済み: " + new Date().toLocaleTimeString();
+        }
+
+        minutesContent.addEventListener('input', () => {
+            localStorage.setItem('meeting_minutes', minutesContent.innerHTML);
+            autoSaveStatus.innerText = "編集を保存済み: " + new Date().toLocaleTimeString();
+        });
+
+        function updateUI() {
+            startBtn.classList.add('hidden'); pauseBtn.classList.add('hidden'); resumeBtn.classList.add('hidden'); stopBtn.classList.add('hidden');
+            recordingDot.classList.add('hidden');
+            statusBadge.className = "px-4 py-1.5 rounded-full text-xs font-bold transition-all ";
+            if (isRecording && !isPaused) {
+                pauseBtn.classList.remove('hidden'); stopBtn.classList.remove('hidden');
+                statusBadge.innerText = "録音中"; statusBadge.classList.add('bg-red-500', 'text-white', 'recording-pulse');
+                recordingDot.classList.remove('hidden');
+            } else if (isRecording && isPaused) {
+                resumeBtn.classList.remove('hidden'); stopBtn.classList.remove('hidden');
+                statusBadge.innerText = "一時停止"; statusBadge.classList.add('bg-amber-400', 'text-white');
+            } else {
+                startBtn.classList.remove('hidden');
+                statusBadge.innerText = "待機中"; statusBadge.classList.add('bg-slate-200', 'text-slate-600');
+            }
+        }
+
+        async function generateMinutes() {
+            const textToProcess = transcriptArea.innerText.trim();
+            if (!textToProcess) return;
+            loadingIndicator.classList.remove('hidden');
+            generateBtn.disabled = true;
+
+            const systemPrompt = `優秀な書記官として、会議の書き起こしを以下の構成でHTML出力してください。
+1. 議題 (議題の名称やメインテーマ)
+2. 要約 (会議の全体像を3-5行で)
+3. 決定事項 (話し合いで決まったことを箇条書きで)
+4. ネクストアクション (誰がいつまでに何をするか)
+
+Tailwind CSSのクラスを使い、見出し(h2)には境界線を引くなどビジネス向けのデザインにしてください。`;
+            
+            try {
+                const response = await callGemini(textToProcess, systemPrompt);
+                const htmlContent = formatResponse(response);
+                minutesContent.innerHTML = htmlContent;
+                localStorage.setItem('meeting_minutes', htmlContent);
+                minutesSection.classList.remove('hidden');
+                minutesSection.scrollIntoView({ behavior: 'smooth' });
+            } catch (error) {
+                showError("AI生成中にエラーが発生しました。");
+            } finally {
+                loadingIndicator.classList.add('hidden');
+                generateBtn.disabled = false;
+            }
+        }
+
+        async function callGemini(prompt, sys) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const payload = { contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: sys }] } };
+            const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const data = await res.json();
+            return data.candidates?.[0]?.content?.parts?.[0]?.text;
+        }
+
+        function formatResponse(text) {
+            let clean = text.replace(/```html/g, '').replace(/```/g, '').trim();
+            if (!clean.includes('<h')) {
+                clean = `<div class="p-2">` + clean
+                    .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold text-indigo-800 mb-6">$1</h1>')
+                    .replace(/^## (.*$)/gim, '<h2 class="text-lg font-bold text-slate-800 mt-8 mb-4 border-b pb-2">$1</h2>')
+                    .replace(/^\- (.*$)/gim, '<li class="ml-4 list-disc text-slate-700 mb-1">$1</li>')
+                    .replace(/\n/g, '<br>') + `</div>`;
+            }
+            const now = new Date();
+            return `<div class="text-right text-[10px] text-slate-400 mb-4 no-print tracking-tighter">作成: ${now.toLocaleString('ja-JP')}</div>` + clean;
+        }
+
+        function exportToWord() {
+            const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><style>body{font-family:sans-serif;line-height:1.6;padding:40px}h1{color:#3730a3;font-size:24pt}h2{border-bottom:2px solid #eee;color:#1e293b;font-size:18pt;margin-top:20pt}</style></head><body>`;
+            const blob = new Blob(['\ufeff', header + minutesContent.innerHTML + "</body></html>"], { type: 'application/msword' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+            a.download = `議事録_${new Date().toISOString().slice(0,10)}.doc`; a.click();
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('errorMsg'); el.innerText = msg; el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 4000);
+        }
+
+        testDataBtn.addEventListener('click', () => {
+            const dummy = `佐藤：お疲れ様です。本日の「オフィス環境改善プロジェクト」の定例を始めます。
+田中：まずデスクの整理整頓ですが、共有スペースに棚を増設したいと考えています。
+鈴木：予算は10万円以内で収まりそうです。安価な組み立て式を検討しています。
+佐藤：いいですね。では田中さんが今週中に棚を選定してください。
+鈴木：私は設置場所の最終確認を総務部と行っておきます。
+佐藤：ありがとうございます。次回の会議で最終決定しましょう。`;
+            finalTranscript = dummy; transcriptArea.innerText = dummy; generateBtn.disabled = false; saveToLocal();
+        });
+
+        startBtn.addEventListener('click', () => { isRecording = true; isPaused = false; recognition.start(); });
+        pauseBtn.addEventListener('click', () => { isPaused = true; recognition.stop(); updateUI(); });
+        resumeBtn.addEventListener('click', () => { isPaused = false; recognition.start(); updateUI(); });
+        stopBtn.addEventListener('click', () => { isRecording = false; isPaused = false; recognition.stop(); updateUI(); });
+        generateBtn.addEventListener('click', generateMinutes);
+
+        // Modal Logic: Word
+        saveWordBtn.addEventListener('click', () => confirmModal.classList.remove('hidden'));
+        document.getElementById('cancelModalBtn').addEventListener('click', () => confirmModal.classList.add('hidden'));
+        document.getElementById('confirmModalBtn').addEventListener('click', () => { exportToWord(); confirmModal.classList.add('hidden'); });
+        
+        // Modal Logic: Print
+        openPrintModalBtn.addEventListener('click', () => printModal.classList.remove('hidden'));
+        document.getElementById('cancelPrintBtn').addEventListener('click', () => printModal.classList.add('hidden'));
+        document.getElementById('confirmPrintBtn').addEventListener('click', () => { 
+            printModal.classList.add('hidden'); 
+            window.print(); 
+        });
+
+        // Modal Logic: Clear All
+        clearBtn.addEventListener('click', () => clearConfirmModal.classList.remove('hidden'));
+        document.getElementById('cancelClearBtn').addEventListener('click', () => clearConfirmModal.classList.add('hidden'));
+        document.getElementById('confirmClearBtn').addEventListener('click', () => {
+            // 1. Clear LocalStorage
+            localStorage.clear();
+            // 2. Reset Variables
+            finalTranscript = "";
+            savedMinutes = "";
+            // 3. Clear UI
+            transcriptArea.innerText = "";
+            minutesContent.innerHTML = "";
+            minutesSection.classList.add('hidden');
+            generateBtn.disabled = true;
+            autoSaveStatus.innerText = "データを完全に削除しました";
+            // 4. Close Modal
+            clearConfirmModal.classList.add('hidden');
+        });
+
+        // Close modals on outside click
+        window.addEventListener('click', (e) => {
+            if (e.target === confirmModal) confirmModal.classList.add('hidden');
+            if (e.target === printModal) printModal.classList.add('hidden');
+            if (e.target === clearConfirmModal) clearConfirmModal.classList.add('hidden');
+        });
+    </script>
+</body>
+</html>
